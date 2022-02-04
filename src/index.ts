@@ -18,12 +18,13 @@
 export interface LatLng {
   lat: number;
   lng: number;
+  elev?: number;
 }
 
 /**
- * Array with lat and lng elements.
+ * Array with lat and lng and elev elements.
  */
-export type LatLngTuple = [number, number];
+export type LatLngTuple = [number, number, number];
 
 /**
  * Decodes an encoded path string into a sequence of LatLngs.
@@ -46,7 +47,8 @@ export type LatLngTuple = [number, number];
  */
 export const decode = function (
   encodedPath: string,
-  precision = 5
+  precision = 5,
+  dimension = '2d'
 ): LatLngTuple[] {
   const factor = Math.pow(10, precision);
 
@@ -58,6 +60,7 @@ export const decode = function (
   let index = 0;
   let lat = 0;
   let lng = 0;
+  let elev = 0;
   let pointIndex = 0;
 
   // This code has been profiled and optimized, so don't modify it without
@@ -67,6 +70,8 @@ export const decode = function (
     let result = 1;
     let shift = 0;
     let b: number;
+    let res = [];
+
     do {
       // Invariant: "result" is current partial result plus (1 << shift).
       // The following line effectively clears this bit by decrementing "b".
@@ -75,6 +80,7 @@ export const decode = function (
       shift += 5;
     } while (b >= 0x1f); // See note above.
     lat += result & 1 ? ~(result >> 1) : result >> 1;
+    res.push(lat / factor)
 
     result = 1;
     shift = 0;
@@ -84,8 +90,21 @@ export const decode = function (
       shift += 5;
     } while (b >= 0x1f);
     lng += result & 1 ? ~(result >> 1) : result >> 1;
+    res.push(lng / factor)
 
-    path[pointIndex] = [lat / factor, lng / factor];
+    if (dimension === '3d') {
+      result = 1;
+      shift = 0;
+      do {
+        b = encodedPath.charCodeAt(index++) - 63 - 1;
+        result += b << shift;
+        shift += 5;
+      } while (b >= 0x1f);
+      elev += result & 1 ? ~(result >> 1) : result >> 1;
+      res.push(elev / factor)
+    }
+
+    path[pointIndex] = res;
   }
   // truncate array
   path.length = pointIndex;
@@ -114,21 +133,28 @@ export const decode = function (
  */
 export const encode = function (
   path: (number[] | LatLng | LatLngTuple)[],
-  precision = 5
+  precision = 5,
+  dimension = '2d'
 ): string {
   const factor = Math.pow(10, precision);
 
   const transform = function latLngToFixed(
     latLng: LatLng | LatLngTuple
-  ): [number, number] {
+  ): number[] {
+    let elements: number[];
+
     if (!Array.isArray(latLng)) {
-      latLng = [latLng.lat, latLng.lng];
+      elements = [latLng.lat, latLng.lng, latLng.elev] //.filter(Boolean);
+    } else {
+      elements = latLng;
     }
 
-    return [round(latLng[0] * factor), round(latLng[1] * factor)];
+    // return [round(latLng[0] * factor), round(latLng[1] * factor)];
+
+    return elements.map(it => round(it * factor));
   };
 
-  return polylineEncodeLine(path, transform);
+  return polylineEncodeLine(path, transform, dimension);
 };
 
 /**
@@ -139,10 +165,11 @@ export const encode = function (
  */
 export const polylineEncodeLine = function (
   array: (number[] | LatLng | LatLngTuple)[],
-  transform: (latLng: number[] | LatLng | LatLngTuple) => [number, number]
+  transform: (latLng: number[] | LatLng | LatLngTuple) => number[],
+  dimension = '2d',
 ): string {
   const v: string[] = [];
-  let start = [0, 0];
+  let start = [0, 0, 0];
   let end;
   for (let i = 0, I = array.length; i < I; ++i) {
     // In order to prevent drift (from quantizing deltas), we explicitly convert
@@ -152,6 +179,11 @@ export const polylineEncodeLine = function (
     // Push the next edge
     polylineEncodeSigned(round(end[0]) - round(start[0]), v); // lat
     polylineEncodeSigned(round(end[1]) - round(start[1]), v); // lng
+
+    if (dimension === '3d') {
+      polylineEncodeSigned(round(end[2]) - round(start[2]), v); // elev
+    }
+
     start = end;
   }
 

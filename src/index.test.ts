@@ -51,6 +51,11 @@ const CASES = {
     [36.053573, -112.083914],
     [36.053845, -112.083965],
   ],
+  POINTS_3D: [
+    [38.5, -120.2, 100],
+    [40.7, -120.95, 200],
+    [43.252, -126.453, 300],
+  ]
 };
 
 describe("decode", () => {
@@ -71,6 +76,10 @@ describe("decode", () => {
   test("decodes with precision 0", () => {
     expect(decode("mAnFC@CH", 0)).toEqual(CASES.DEFAULT_ROUNDED);
   });
+
+  test("decodes 3d points", () => {
+    expect(decode("_izlhA~rlgdF_oov}D_{geC~ywl@_oov}D_kwzCn`{nI_oov}D", 6, '3d')).toEqual(CASES.POINTS_3D)
+  })
 });
 
 describe("roundtrip", () => {
@@ -128,4 +137,8 @@ describe("encode", () => {
       decode(encode([{ lng: -107.3741825, lat: 0 }], 7), 7)[0][1]
     ).toBeLessThan(0);
   });
+
+  test("encoded 3d values correctly", () => {
+    expect(encode(CASES.POINTS_3D, 6, '3d')).toEqual("_izlhA~rlgdF_oov}D_{geC~ywl@_oov}D_kwzCn`{nI_oov}D");
+  })
 });
